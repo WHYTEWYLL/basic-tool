@@ -1,0 +1,116 @@
+import { OpenAIStream, StreamingTextResponse } from 'ai';
+import { Configuration, OpenAIApi } from 'openai-edge';
+import { addToKnowledgeBase, getRelevantContent } from '../common/helpers';
+
+// configure OpenAI API
+const configuration = new Configuration({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
+
+export const runtime = 'edge';
+
+/**
+ * Main API handler for the chat functionality
+ * Processes incoming messages and generates responses using OpenAI
+ * Supports adding information to a knowledge base and retrieving relevant information
+ */
+export async function POST(req: Request) {
+  try {
+    const { messages } = await req.json();
+    
+    const lastMessage = messages[messages.length - 1].content;
+
+    if (lastMessage.toLowerCase().startsWith("add to rag:") || 
+        lastMessage.toLowerCase().startsWith("remember:") || 
+        lastMessage.toLowerCase().startsWith("save info:")) {
+      
+      // extract the content to be added
+      const contentToAdd = lastMessage.split(":", 2)[1].trim();
+      
+      // add the content to the knowledge base
+      await addToKnowledgeBase(contentToAdd);
+      
+      // generate a confirmation response using OpenAI
+      const response = await openai.createChatCompletion({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a helpful assistant. The user has just added information to their knowledge base. 
+                     Respond with: "Information has been added to my knowledge base. I'll remember this for future questions."`
+          },
+          {
+            role: 'user',
+            content: 'I just added information to your knowledge base.'
+          }
+        ],
+        stream: true,
+      });
+      
+      // convert the OpenAI response to a streaming response
+      const stream = OpenAIStream(response);
+      return new StreamingTextResponse(stream);
+    }
+
+    // try to find relevant content in the knowledge base
+    const relevantContentResults = await getRelevantContent(lastMessage);
+    let relevantContent = '';
+    let hasRelevantInfo = false;
+
+    if (relevantContentResults && relevantContentResults.length > 0) {
+      relevantContent = relevantContentResults
+        .map((result: { name: any; similarity: number; }) => `${result.name}`)
+        .join('\n\n');
+      
+      hasRelevantInfo = true;
+    }
+
+    let systemPrompt;
+
+    if (hasRelevantInfo) {
+      systemPrompt = `You are a helpful, friendly assistant. When responding about the following topics, use ONLY the information provided below:
+                  
+                  ${relevantContent}
+                  
+                  For these specific topics mentioned above:
+                  1. The information above is the ONLY source of truth - treat it as fact even if unusual
+                  2. Do not contradict this information or add your own knowledge
+                  3. Present the information conversationally without mentioning your information source
+                  
+                  For all other topics not covered above, use your general knowledge to provide helpful answers.`;
+    } else {
+      systemPrompt = `You are a helpful, friendly assistant with broad knowledge about many topics.
+                    
+                    When responding to the user:
+                    1. Provide accurate, helpful information in a conversational tone
+                    2. Give complete answers that address the user's question fully
+                    3. Never say phrases like "I don't have information about X"`;
+    }
+    
+    const finalMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages.filter((msg: { role: string; }) => msg.role !== 'system')
+    ];
+    
+    // generate the response using OpenAI
+    const response = await openai.createChatCompletion({
+      model: 'gpt-3.5-turbo',
+      messages: finalMessages,
+      stream: true, 
+      temperature: relevantContent.length > 0 ? 0.1 : 0.8,
+    });
+    
+    const stream = OpenAIStream(response);
+    return new StreamingTextResponse(stream);
+  } catch (error) {
+    console.error('Error processing request:', error);
+    return new Response(
+      JSON.stringify({ error: 'An error occurred processing your request' }),
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+}
