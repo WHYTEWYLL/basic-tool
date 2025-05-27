@@ -1,6 +1,6 @@
 import { OpenAIStream, StreamingTextResponse } from 'ai';
 import { Configuration, OpenAIApi } from 'openai-edge';
-import { addToKnowledgeBase, getRelevantContent } from '../common/helpers';
+import { vehelperService } from '../../../lib/service/vehelper-service'
 
 // configure OpenAI API
 const configuration = new Configuration({
@@ -8,7 +8,7 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 /**
  * Main API handler for the chat functionality
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       const contentToAdd = lastMessage.split(":", 2)[1].trim();
       
       // add the content to the knowledge base
-      await addToKnowledgeBase(contentToAdd);
+      await vehelperService.createResource({ content: contentToAdd });
       
       // generate a confirmation response using OpenAI
       const response = await openai.createChatCompletion({
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     }
 
     // try to find relevant content in the knowledge base
-    const relevantContentResults = await getRelevantContent(lastMessage);
+    const relevantContentResults = await vehelperService.findRelevantContent(lastMessage);
     let relevantContent = '';
     let hasRelevantInfo = false;
 
