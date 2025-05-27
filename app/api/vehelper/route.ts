@@ -19,13 +19,10 @@ export async function POST(req: Request) {
         lastMessage.toLowerCase().startsWith("remember:") || 
         lastMessage.toLowerCase().startsWith("save info:")) {
       
-      // extract the content to be added
       const contentToAdd = lastMessage.split(":", 2)[1].trim();
       
-      // add the content to the knowledge base
       await vehelperService.createResource({ content: contentToAdd });
       
-      // generate a confirmation response using AI SDK v4
       const result = await streamText({
         model: openai('gpt-3.5-turbo'),
         messages: [
@@ -51,7 +48,7 @@ export async function POST(req: Request) {
 
     if (relevantContentResults && relevantContentResults.length > 0) {
       relevantContent = relevantContentResults
-        .map((result: { name: any; similarity: number; }) => `${result.name}`)
+        .map((result: { name: string; similarity: number; }) => `${result.name}`)
         .join('\n\n');
       
       hasRelevantInfo = true;
@@ -84,7 +81,7 @@ export async function POST(req: Request) {
       ...messages.filter((msg: { role: string; }) => msg.role !== 'system')
     ];
     
-    // generate the response using AI SDK v4
+    // generate the response
     const result = await streamText({
       model: openai('gpt-3.5-turbo'),
       messages: finalMessages,

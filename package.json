@@ -13,7 +13,12 @@
     "db:pull": "drizzle-kit introspect",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:watch": "vitest --watch",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.68",
