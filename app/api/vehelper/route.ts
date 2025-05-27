@@ -1,12 +1,6 @@
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import { Configuration, OpenAIApi } from 'openai-edge';
+import { streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
 import { vehelperService } from '../../../lib/service/vehelper-service'
-
-// configure OpenAI API
-const configuration = new Configuration({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
 
 export const runtime = 'nodejs';
 
@@ -31,9 +25,9 @@ export async function POST(req: Request) {
       // add the content to the knowledge base
       await vehelperService.createResource({ content: contentToAdd });
       
-      // generate a confirmation response using OpenAI
-      const response = await openai.createChatCompletion({
-        model: 'gpt-3.5-turbo',
+      // generate a confirmation response using AI SDK v4
+      const result = await streamText({
+        model: openai('gpt-3.5-turbo'),
         messages: [
           {
             role: 'system',
@@ -45,12 +39,9 @@ export async function POST(req: Request) {
             content: 'I just added information to your knowledge base.'
           }
         ],
-        stream: true,
       });
       
-      // convert the OpenAI response to a streaming response
-      const stream = OpenAIStream(response);
-      return new StreamingTextResponse(stream);
+      return result.toDataStreamResponse();
     }
 
     // try to find relevant content in the knowledge base
@@ -93,16 +84,14 @@ export async function POST(req: Request) {
       ...messages.filter((msg: { role: string; }) => msg.role !== 'system')
     ];
     
-    // generate the response using OpenAI
-    const response = await openai.createChatCompletion({
-      model: 'gpt-3.5-turbo',
+    // generate the response using AI SDK v4
+    const result = await streamText({
+      model: openai('gpt-3.5-turbo'),
       messages: finalMessages,
-      stream: true, 
       temperature: relevantContent.length > 0 ? 0.1 : 0.8,
     });
     
-    const stream = OpenAIStream(response);
-    return new StreamingTextResponse(stream);
+    return result.toDataStreamResponse();
   } catch (error) {
     console.error('Error processing request:', error);
     return new Response(
