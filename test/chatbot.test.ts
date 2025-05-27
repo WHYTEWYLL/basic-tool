@@ -24,7 +24,7 @@ vi.mock('../app/api/common/helpers', () => ({
   getRelevantContent: mockGetRelevantContent
 }));
 
-import { POST } from '../app/api/chat/route';
+import { POST } from '../app/api/vehelper/route';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
 import { Configuration, OpenAIApi } from 'openai-edge';
 import { addToKnowledgeBase, getRelevantContent } from '../app/api/common/helpers';

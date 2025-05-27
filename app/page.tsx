@@ -5,6 +5,7 @@ import { useChat } from 'ai/react';
 export default function Chat() {
   const { messages, input, handleInputChange, handleSubmit } = useChat({
     maxSteps: 3,
+    api: '/api/vehelper',
   });
   return (
     <div className="flex flex-col w-full max-w-md py-24 mx-auto stretch">
@@ -33,7 +34,7 @@ export default function Chat() {
           value={input}
           placeholder="Say something..."
           onChange={handleInputChange}
-        />
+        /> 
       </form>
     </div>
   );
