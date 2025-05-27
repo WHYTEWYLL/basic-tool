@@ -6,12 +6,12 @@ import postgres from "postgres";
 
 
 const runMigrate = async () => {
-  if (!env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is not defined");
+  if (!env.VECTOR_DATABASE_URL) {
+    throw new Error("VECTOR_DATABASE_URL is not defined");
   }
 
   
-const connection = postgres(env.DATABASE_URL, { max: 1 });
+const connection = postgres(env.VECTOR_DATABASE_URL, { max: 1 });
 
 const db = drizzle(connection);
 
