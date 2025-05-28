@@ -4,6 +4,23 @@ import { vehelperService } from '../../../lib/service/vehelper-service'
 
 export const runtime = 'nodejs';
 
+// CORS headers function
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*', 
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: corsHeaders(),
+  });
+}
+
 /**
  * Main API handler for the chat functionality
  * Processes incoming messages and generates responses using OpenAI
@@ -14,7 +31,6 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     
     const lastMessage = messages[messages.length - 1].content;
-
     if (lastMessage.toLowerCase().startsWith("add to rag:") || 
         lastMessage.toLowerCase().startsWith("remember:") || 
         lastMessage.toLowerCase().startsWith("save info:")) {
@@ -38,14 +54,19 @@ export async function POST(req: Request) {
         ],
       });
       
-      return result.toDataStreamResponse();
+      const response = result.toDataStreamResponse();
+      
+      Object.entries(corsHeaders()).forEach(([key, value]) => {
+        response.headers.set(key, value);
+      });
+      
+      return response;
     }
-
+    
     // try to find relevant content in the knowledge base
     const relevantContentResults = await vehelperService.findRelevantContent(lastMessage);
     let relevantContent = '';
     let hasRelevantInfo = false;
-
     if (relevantContentResults && relevantContentResults.length > 0) {
       relevantContent = relevantContentResults
         .map((result: { name: string; similarity: number; }) => `${result.name}`)
@@ -53,9 +74,8 @@ export async function POST(req: Request) {
       
       hasRelevantInfo = true;
     }
-
+    
     let systemPrompt;
-
     if (hasRelevantInfo) {
       systemPrompt = `You are a helpful, friendly assistant. When responding about the following topics, use ONLY the information provided below:
                   
@@ -88,14 +108,23 @@ export async function POST(req: Request) {
       temperature: relevantContent.length > 0 ? 0.1 : 0.8,
     });
     
-    return result.toDataStreamResponse();
+    const response = result.toDataStreamResponse();
+    
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+    
+    return response;
   } catch (error) {
     console.error('Error processing request:', error);
     return new Response(
       JSON.stringify({ error: 'An error occurred processing your request' }),
       { 
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders()
+        }
       }
     );
   }
