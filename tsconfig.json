@@ -24,7 +24,8 @@
     "paths": {
       "@/*": [
         "./*"
-      ]
+      ],
+      ".prisma/vector-client": ["./node_modules/.prisma/vector-client"]
     },
     "target": "esnext",
     "baseUrl": "./"
