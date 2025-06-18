@@ -3,9 +3,10 @@ import { embed, embedMany, CoreMessage, streamText } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { vehelperPrompts } from '../prompts/veHelper';
+import PDFParser from 'pdf2json';
 
 export const insertResourceSchema = z.object({
-  content: z.string(),
+  pdfBuffer: z.instanceof(Buffer),
 });
 
 export type NewResourceParams = z.infer<typeof insertResourceSchema>;
@@ -15,9 +16,23 @@ interface SimilarContentResult {
   similarity: number;
 }
 
+interface PDFText {
+  R: Array<{ T: string }>;
+}
+
+interface PDFPage {
+  Texts: PDFText[];
+}
+
+interface PDFData {
+  Pages: PDFPage[];
+}
+
 export class VehelperService {
   private embeddingModel = openai.embedding('text-embedding-ada-002');
   private vectorDb: VectorPrismaClient;
+  private readonly MAX_CHUNK_TOKENS = 500; // Approx 2000 chars, assuming 1 token ≈ 4 chars
+  private readonly MAX_EMBEDDING_TOKENS = 8192; // text-embedding-ada-002 limit
 
   constructor(vectorDb: VectorPrismaClient) {
     this.vectorDb = vectorDb;
@@ -47,24 +62,6 @@ export class VehelperService {
       throw new Error('Last message content must be a string');
     }
   
-    if (
-      lastMessage.content.toLowerCase().startsWith("add to rag:") ||
-      lastMessage.content.toLowerCase().startsWith("remember:") ||
-      lastMessage.content.toLowerCase().startsWith("save info:")
-    ) {
-      const contentToAdd = lastMessage.content.split(":", 2)[1].trim();
-      await this.createResource({ content: contentToAdd });
-  
-      return {
-        messages: [
-          { role: 'system', content: vehelperPrompts.knowledgeBaseAdded } as CoreMessage,
-          { role: 'user', content: 'I just added information to your knowledge base.' } as CoreMessage
-        ],
-        isKnowledgeBaseAddition: true,
-        temperature: 0.8
-      };
-    }
-  
     // Find relevant content
     const relevantContentResults = await this.findRelevantContent(lastMessage.content) as SimilarContentResult[];
     const relevantContent = relevantContentResults && relevantContentResults.length
@@ -90,14 +87,33 @@ export class VehelperService {
   }
 
   /**
- * Generates text chunks by splitting on periods
- */
+   * Generates text chunks considering token limits
+   */
   private generateChunks(input: string): string[] {
-    return input
-      .trim()
-      .split('.')
-      .map(chunk => chunk.trim())
-      .filter(chunk => chunk !== '');
+    const chunks: string[] = [];
+    let currentChunk = '';
+    let currentTokenCount = 0;
+    const sentences = input.trim().split(/(?<=\.)\s+/).filter(s => s.trim() !== '');
+
+    for (const sentence of sentences) {
+      const sentenceLength = Math.ceil(sentence.length / 4); // Approx tokens
+      if (currentTokenCount + sentenceLength > this.MAX_CHUNK_TOKENS) {
+        if (currentChunk.trim() !== '') {
+          chunks.push(currentChunk.trim());
+        }
+        currentChunk = sentence;
+        currentTokenCount = sentenceLength;
+      } else {
+        currentChunk += (currentChunk ? ' ' : '') + sentence;
+        currentTokenCount += sentenceLength;
+      }
+    }
+
+    if (currentChunk.trim() !== '') {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
   }
 
   /**
@@ -119,7 +135,10 @@ export class VehelperService {
    * Generates a single embedding for a text value
    */
   async generateEmbedding(value: string): Promise<number[]> {
-    const input = value.replaceAll('\\n', ' ');
+    const input = value.replaceAll('\n', ' ');
+    if (Math.ceil(input.length / 4) > this.MAX_EMBEDDING_TOKENS) {
+      throw new Error('Input exceeds maximum token limit for embedding');
+    }
     const { embedding } = await embed({
       model: this.embeddingModel,
       value: input,
@@ -147,24 +166,34 @@ export class VehelperService {
   }
 
   /**
-   * Creates a new resource with embeddings
+   * Creates a new resource from a PDF
    */
   async createResource(input: NewResourceParams) {
     try {
       const payload = insertResourceSchema.parse(input);
-      const contentWithoutLineBreaks = payload.content.replace("\n", " ");
-      
-      // Create resource in vector database
+      const parser = new PDFParser();
+      const pdfData = await new Promise((resolve, reject) => {
+        parser.on('pdfParser_dataReady', resolve);
+        parser.on('pdfParser_dataError', err => reject(new Error(`PDF parsing error: ${err.parserError.message}`)));
+        parser.parseBuffer(payload.pdfBuffer);
+      }) as PDFData;
+      const contentWithoutLineBreaks = pdfData.Pages.map(page =>
+        page.Texts.map(text => decodeURIComponent(text.R[0].T)).join(' ')
+      ).join(' ').replace(/\n+/g, ' ').trim();
+      if (!contentWithoutLineBreaks) {
+        throw new Error('No text extracted from PDF');
+      }
       const resource = await this.vectorDb.resource.create({
         data: {
           content: contentWithoutLineBreaks,
         },
       });
 
-      // Generate embeddings
       const embeddings = await this.generateEmbeddings(contentWithoutLineBreaks);
-      
-      // Create embeddings in batch
+      if (embeddings.length === 0) {
+        throw new Error('No valid chunks generated for embedding');
+      }
+
       await this.vectorDb.$transaction(
         embeddings.map(embedding =>
           this.vectorDb.$executeRaw`
@@ -174,15 +203,17 @@ export class VehelperService {
         )
       );
 
-      return "Resource successfully created and embedded.";
+      return "PDF content successfully processed and embedded.";
     } catch (e) {
-      if (e instanceof Error)
-        return e.message.length > 0 ? e.message : "Error, please try again.";
+      if (e instanceof Error) {
+        throw new Error(e.message.length > 0 ? e.message : 'Error processing PDF');
+      }
+      throw new Error('Unknown error processing PDF');
     }
   }
 
   /**
-   * Creates multiple resources in batch
+   * Creates multiple resources from PDFs in batch
    */
   async createMultipleResources(inputs: NewResourceParams[]) {
     const results = await Promise.allSettled(
@@ -193,7 +224,7 @@ export class VehelperService {
       input: inputs[index],
       result: result.status === 'fulfilled' 
         ? result.value 
-        : `Error: ${result.reason}`
+        : `Error: ${result.reason instanceof Error ? result.reason.message : 'Unknown error'}`
     }));
   }
 
