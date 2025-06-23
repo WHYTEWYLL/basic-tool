@@ -36,12 +36,13 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const input = insertResourceSchema.parse({
       pdfBuffer: buffer,
+      filename: file.name,
     });
 
     const result = await vehelperService.createResource(input);
 
     return new Response(
-      JSON.stringify({ message: result }),
+      JSON.stringify({ message: result.message, id: result.id }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
   } catch (error) {

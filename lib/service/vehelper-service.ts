@@ -7,6 +7,7 @@ import PDFParser from 'pdf2json';
 
 export const insertResourceSchema = z.object({
   pdfBuffer: z.instanceof(Buffer),
+  filename: z.string().optional(), // Added to accept filename
 });
 
 export type NewResourceParams = z.infer<typeof insertResourceSchema>;
@@ -31,8 +32,8 @@ interface PDFData {
 export class VehelperService {
   private embeddingModel = openai.embedding('text-embedding-ada-002');
   private vectorDb: VectorPrismaClient;
-  private readonly MAX_CHUNK_TOKENS = 500; // Approx 2000 chars, assuming 1 token ≈ 4 chars
-  private readonly MAX_EMBEDDING_TOKENS = 8192; // text-embedding-ada-002 limit
+  private readonly MAX_CHUNK_TOKENS = 500;
+  private readonly MAX_EMBEDDING_TOKENS = 8192;
 
   constructor(vectorDb: VectorPrismaClient) {
     this.vectorDb = vectorDb;
@@ -53,7 +54,7 @@ export class VehelperService {
     return result;
   }
 
-  /**
+   /**
    * Processes messages and prepares them for streaming
    */
   async processMessages(messages: CoreMessage[]) {
@@ -62,18 +63,15 @@ export class VehelperService {
       throw new Error('Last message content must be a string');
     }
   
-    // Find relevant content
     const relevantContentResults = await this.findRelevantContent(lastMessage.content) as SimilarContentResult[];
     const relevantContent = relevantContentResults && relevantContentResults.length
       ? relevantContentResults.map((result) => `${result.name}`).join('\n\n')
       : "";
   
-    // Construct system prompt
     const systemPrompt = relevantContent
       ? vehelperPrompts.withRelevantContent({ relevantContent })
       : vehelperPrompts.withoutRelevantContent;
   
-    // Prepare final messages
     const finalMessages: CoreMessage[] = [
       { role: 'system', content: systemPrompt },
       ...messages.filter((msg) => msg.role !== 'system')
@@ -96,7 +94,7 @@ export class VehelperService {
     const sentences = input.trim().split(/(?<=\.)\s+/).filter(s => s.trim() !== '');
 
     for (const sentence of sentences) {
-      const sentenceLength = Math.ceil(sentence.length / 4); // Approx tokens
+      const sentenceLength = Math.ceil(sentence.length / 4);
       if (currentTokenCount + sentenceLength > this.MAX_CHUNK_TOKENS) {
         if (currentChunk.trim() !== '') {
           chunks.push(currentChunk.trim());
@@ -186,6 +184,7 @@ export class VehelperService {
       const resource = await this.vectorDb.resource.create({
         data: {
           content: contentWithoutLineBreaks,
+          filename: payload.filename, // Store the filename
         },
       });
 
@@ -203,7 +202,7 @@ export class VehelperService {
         )
       );
 
-      return "PDF content successfully processed and embedded.";
+      return { id: resource.id, message: "PDF content successfully processed and embedded." };
     } catch (e) {
       if (e instanceof Error) {
         throw new Error(e.message.length > 0 ? e.message : 'Error processing PDF');
@@ -228,9 +227,35 @@ export class VehelperService {
     }));
   }
 
-  /**
-   * Clean up connections when done
-   */
+  async listResources() {
+    return this.vectorDb.resource.findMany({
+      select: {
+        id: true,
+        filename: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  async deleteResource(id: string) {
+    try {
+      // Delete associated embeddings first due to foreign key constraints
+      await this.vectorDb.embedding.deleteMany({
+        where: { resourceId: id },
+      });
+      // Delete the resource
+      await this.vectorDb.resource.delete({
+        where: { id },
+      });
+      return { message: `Resource with ID ${id} deleted successfully.` };
+    } catch (e) {
+      throw new Error(`Failed to delete resource: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    }
+  }
+
   async disconnect() {
     await this.vectorDb.$disconnect();
   }
