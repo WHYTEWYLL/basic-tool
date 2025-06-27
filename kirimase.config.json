@@ -12,6 +12,5 @@
   "componentLib": "shadcn-ui",
   "driver": "pg",
   "provider": "postgresjs",
-  "orm": "drizzle",
   "auth": null
 }
