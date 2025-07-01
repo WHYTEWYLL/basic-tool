@@ -4,19 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma generate --schema=prisma/vector-schema.prisma && next build",
+    "build": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma/vector/vector-schema.prisma && next build",
     "start": "next start",
-    "postinstall": "prisma generate --schema=prisma/vector-schema.prisma",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma/vector/vector-schema.prisma",
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "vector:generate": "prisma generate --schema=prisma/vector-schema.prisma",
-    "vector:migrate": "prisma migrate dev --schema=prisma/vector-schema.prisma",
-    "vector:migrate:prod": "prisma migrate deploy --schema=prisma/vector-schema.prisma",
-    "vector:studio": "prisma studio --schema=prisma/vector-schema.prisma"
+    "vector:generate": "prisma generate --schema=prisma/schema.prisma && prisma generate --schema=prisma/vector/vector-schema.prisma",
+    "vector:migrate": "prisma migrate dev --schema=prisma/schema.prisma && prisma migrate dev --schema=prisma/vector/vector-schema.prisma",
+    "vector:migrate:prod": "prisma migrate deploy --schema=prisma/schema.prisma && prisma migrate deploy --schema=prisma/vector/vector-schema.prisma",
+    "vector:studio": "prisma studio --schema=prisma/schema.prisma && prisma studio --schema=prisma/vector/vector-schema.prisma"
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.68",

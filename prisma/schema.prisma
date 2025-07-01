@@ -1,0 +1,473 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Define the allowed context values
+enum UserContext {
+  B3TRBUDDY
+  BYEBYEBITES
+  BITEGRAM
+  TRASHDASH
+}
+
+// Define the allowed transaction status values
+enum SubmissionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum ByeByeBitesSubmissionStatus {
+  PENDING_EXPIRATION_DATE
+  PENDING_RECEIPT_IDENTIFICATION
+  IDENTIFIED
+}
+
+enum Network {
+  ETHEREUM
+  VECHAIN
+  FIAT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RewardConfigType {
+  BASE_REWARD
+  LEVEL_REWARDS
+  STREAK_BONUSES
+  EXPIRY_MULTIPLIERS
+  SUSTAINABILITY_METRICS
+  CHALLENGES
+  REWARDS_LIMIT
+}
+
+enum StreakCountType {
+  DAYS
+  WEEKS
+}
+
+model User {
+  id             String      @id @default(uuid()) @db.Uuid
+  walletAddress  String
+  vechainAddress String
+  name           String
+  email          String?
+  context        UserContext @default(B3TRBUDDY)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  logmealApiKey  String?
+  ipAddress      String?
+
+  // Bot Signaling fields
+  botSignalingStatus     Boolean   @default(false)
+  lastBotSignalingCheck  DateTime?
+  botSignalingCheckCount Int       @default(0)
+
+  ingredients       Ingredient[]
+  recipes           Recipe[]
+  submissions       Submission[]
+  transactions      Transaction[]
+  userAssets        UserAsset[]
+  challengeProgress UserChallengeProgress[]
+  impactSummaries   UserImpactSummary[]
+  levelProgress     UserLevelProgress[]
+  streakProgress    UserStreakProgress[]
+  submissionBlocks  UserSubmissionBlock[]
+  UserContextStats  UserContextStats[]
+
+  @@unique([walletAddress, context])
+  @@unique([vechainAddress, context])
+  @@unique([email, context])
+}
+
+model Asset {
+  id               String        @id @default(uuid()) @db.Uuid
+  symbol           String
+  name             String
+  contractAddress  String
+  network          Network
+  coingeckoId      String
+  decimals         Int
+  isActive         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  fromSwapSteps    SwapStep[]    @relation("FromAsset")
+  toSwapSteps      SwapStep[]    @relation("ToAsset")
+  fromTransactions Transaction[] @relation("FromAsset")
+  toTransactions   Transaction[] @relation("ToAsset")
+  userAssets       UserAsset[]
+
+  @@unique([symbol, network])
+  @@unique([contractAddress, network])
+}
+
+model UserAsset {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  assetId   String   @db.Uuid
+  balance   Decimal  @default(0) @db.Decimal(36, 18)
+  updatedAt DateTime @updatedAt
+  asset     Asset    @relation(fields: [assetId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId])
+}
+
+model Transaction {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @db.Uuid
+  status      TransactionStatus
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  fromAmount  Decimal           @db.Decimal(36, 18)
+  fromAssetId String            @db.Uuid
+  fromNetwork Network
+  toAmount    Decimal           @db.Decimal(36, 18)
+  toAssetId   String            @db.Uuid
+  toNetwork   Network
+  totalFees   Decimal?          @db.Decimal(36, 18)
+  swapSteps   SwapStep[]
+  fromAsset   Asset             @relation("FromAsset", fields: [fromAssetId], references: [id])
+  toAsset     Asset             @relation("ToAsset", fields: [toAssetId], references: [id])
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+}
+
+model RewardConfig {
+  id        String           @id @default(uuid()) @db.Uuid
+  context   UserContext
+  type      RewardConfigType
+  payload   Json
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([context, type])
+}
+
+model UserChallengeProgress {
+  id            String      @id @default(uuid()) @db.Uuid
+  userId        String      @db.Uuid
+  context       UserContext
+  challengeType String
+  level         Int
+  progressCount Int         @default(0)
+  isCompleted   Boolean     @default(false)
+  completedAt   DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, context])
+}
+
+model UserLevelProgress {
+  id               String      @id @default(uuid()) @db.Uuid
+  userId           String      @db.Uuid
+  context          UserContext
+  currentLevel     Int
+  totalSubmissions Int
+  achievedAt       DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, context])
+}
+
+model UserStreakProgress {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String          @db.Uuid
+  context          UserContext
+  streakCount      Int
+  lastSubmissionAt DateTime
+  streakCountType  StreakCountType
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, context])
+}
+
+model UserSubmissionBlock {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @db.Uuid
+  context      UserContext
+  blockedAt    DateTime    @default(now())
+  blockedUntil DateTime
+  reason       String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, context])
+}
+
+model UserContextStats {
+  id      String       @id @default(uuid()) @db.Uuid
+  userId  String       @db.Uuid
+  context UserContext? // null means aggregated stats across all contexts
+
+  // Submission counts
+  totalSubmissions       Int @default(0)
+  trashDashSubmissions   Int @default(0)
+  biteGramSubmissions    Int @default(0)
+  byeByeBitesSubmissions Int @default(0)
+
+  // Progress tracking
+  trashDashCurrentLevel          Int @default(0)
+  biteGramCurrentLevel           Int @default(0)
+  trashDashCurrentStreak         Int @default(0)
+  biteGramCurrentStreak          Int @default(0)
+  byeByeBitesCurrentStreak       Int @default(0)
+  byeByeBitesChallengesCompleted Int @default(0)
+
+  // Rewards
+  totalB3trEarned Decimal @default(0) @db.Decimal(36, 18)
+
+  // Environmental impact totals
+  totalCo2Impact              Decimal @default(0) @db.Decimal(36, 18)
+  totalGasImpact              Decimal @default(0) @db.Decimal(36, 18)
+  totalPlasticImpact          Decimal @default(0) @db.Decimal(36, 18)
+  totalLightbulbImpact        Decimal @default(0) @db.Decimal(36, 18)
+  totalShowerImpact           Decimal @default(0) @db.Decimal(36, 18)
+  totalTurtlesImpact          Decimal @default(0) @db.Decimal(36, 18)
+  totalTvHoursImpact          Decimal @default(0) @db.Decimal(36, 18)
+  totalGardenFertilizedImpact Decimal @default(0) @db.Decimal(36, 18)
+  totalTreesSavedImpact       Decimal @default(0) @db.Decimal(36, 18)
+  totalCarbonSavedImpact      Decimal @default(0) @db.Decimal(36, 18)
+
+  // Flexible additional metrics for unforeseen KPIs
+  extraMetrics Json?
+
+  // Temporal data
+  lastSubmissionAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([context])
+}
+
+model SwapStep {
+  id              String            @id @default(uuid()) @db.Uuid
+  transactionId   String            @db.Uuid
+  stepNumber      Int
+  fromAssetId     String            @db.Uuid
+  toAssetId       String            @db.Uuid
+  fromAmount      Decimal           @db.Decimal(36, 18)
+  toAmount        Decimal           @db.Decimal(36, 18)
+  fromNetwork     Network
+  toNetwork       Network
+  exchangeRate    Decimal           @db.Decimal(36, 18)
+  status          TransactionStatus
+  txHash          String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  transactionFees Decimal?          @db.Decimal(36, 18)
+  provider        String?
+  providerData    Json?
+  toAddress       String?
+  fromAsset       Asset             @relation("FromAsset", fields: [fromAssetId], references: [id])
+  toAsset         Asset             @relation("ToAsset", fields: [toAssetId], references: [id])
+  transaction     Transaction       @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, stepNumber])
+}
+
+model BiteGramSubmission {
+  id                      String     @id @db.Uuid
+  title                   String?
+  nutriScore              Int?
+  nutritionValues         Json?
+  impactLightbulbs        Decimal?
+  impactShowers           Decimal?
+  impactGas               Decimal?
+  impactCo2               Decimal?
+  rewardParams            Json?
+  averageNutriScore       Int?
+  calories                Int?
+  type                    String?
+  detailedNutritionValues Json?
+  submission              Submission @relation(fields: [id], references: [id], onDelete: Cascade)
+}
+
+model TrashDashSubmission {
+  id                     String     @id @db.Uuid
+  itemType               String
+  impactTurtles          Decimal?
+  impactTvHours          Decimal?
+  impactCo2              Decimal?
+  rewardParams           Json?
+  impactGardenFertilized Decimal?
+  impactTreesSaved       Decimal?
+  title                  String?
+  submission             Submission @relation(fields: [id], references: [id], onDelete: Cascade)
+}
+
+model ByeByeBitesSubmission {
+  id                 String                      @id @db.Uuid
+  title              String
+  expirationDate     DateTime?
+  labelImageUrl      String?
+  productImageUrl    String?
+  receiptImageUrl    String?
+  submissionStatus   ByeByeBitesSubmissionStatus
+  rewardParams       Json?
+  impactCarbonSaved  Decimal?
+  impactGasSaved     Decimal?
+  impactPlasticSaved Decimal?
+  submission         Submission                  @relation(fields: [id], references: [id], onDelete: Cascade)
+}
+
+model Submission {
+  id          String                 @id @default(uuid()) @db.Uuid
+  userId      String                 @db.Uuid
+  context     UserContext            @default(B3TRBUDDY)
+  status      SubmissionStatus
+  error       String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  imageUrl    String
+  b3trAmount  Decimal?
+  biteGram    BiteGramSubmission?
+  byeByeBites ByeByeBitesSubmission?
+  ingredients Ingredient[]
+  user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trashDash   TrashDashSubmission?
+
+  @@index([context])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model UserImpactSummary {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @db.Uuid
+  context   UserContext
+  metrics   Json
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, context])
+}
+
+model Ingredient {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @db.Uuid
+  name         String
+  submissionId String?     @db.Uuid
+  createdAt    DateTime    @default(now())
+  expiresAt    DateTime?
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Recipe {
+  id                String             @id @default(uuid()) @db.Uuid
+  userId            String             @db.Uuid
+  title             String
+  cookTime          Int?
+  calories          Int?
+  instructions      Json
+  isFavourite       Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipeIngredients RecipeIngredient[]
+}
+
+model RecipeIngredient {
+  id         String  @id @default(uuid()) @db.Uuid
+  recipeId   String  @db.Uuid
+  ingredient String
+  quantity   String?
+  recipe     Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+enum AdminEntity {
+  BYEBYEBITES_CONFIG
+  TRASHDASH_CONFIG
+  BITEGRAM_CONFIG
+}
+
+enum AdminRole {
+  READ
+  READ_WRITE
+}
+
+model AdminUser {
+  id             String   @id @default(uuid()) @db.Uuid
+  walletAddress  String
+  name           String
+  nonce          String
+  nonceExpiresAt DateTime
+  isSuperAdmin   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  permissions AdminPermission[]
+
+  @@unique([walletAddress])
+}
+
+model AdminPermission {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @db.Uuid
+  entity    AdminEntity
+  role      AdminRole
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entity])
+}
+
+model AiRequestLog {
+  id        String      @id @default(uuid()) @db.Uuid
+  context   UserContext
+  userId    String?     @db.Uuid
+  prompt    String
+  response  String
+  success   Boolean     @default(false)
+  createdAt DateTime    @default(now())
+}
+
+model BotSignalingLog {
+  id           String       @id @default(uuid()) @db.Uuid
+  runAt        DateTime     @default(now())
+  totalUsers   Int
+  checkedUsers Int
+  flaggedUsers Int
+  failedChecks Int
+  duration     Int // Duration in milliseconds
+  context      UserContext?
+  status       String // SUCCESS or FAILED
+  error        String?
+  createdAt    DateTime     @default(now())
+
+  @@index([runAt])
+  @@index([context])
+}
+
+model BetterBuyBCorps {
+  id          String @id @default(uuid()) @db.Uuid
+  category    String
+  description String
+}

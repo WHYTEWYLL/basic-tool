@@ -68,9 +68,10 @@ export class VehelperService {
     userId: string,
     sessionId?: string
   ) {
-    console.log("Generating response for messages:", messages);
     const { messages: processedMessages, temperature } =
       await this.processMessages(messages);
+
+    let lastToolResult: any = null;
 
     const result = await streamText({
       model: openai("gpt-3.5-turbo"),
@@ -78,13 +79,13 @@ export class VehelperService {
       temperature,
       tools: { walletStats },
       toolChoice: "auto",
+      toolCallStreaming: true,
     });
 
     let assistantContent = "";
     for await (const chunk of result.textStream) {
       assistantContent += chunk;
     }
-    console.log("Assistant response:", assistantContent);
 
     const assistantMessage: CoreMessage = {
       role: "assistant",
@@ -92,7 +93,7 @@ export class VehelperService {
     };
 
     const userMessages = messages.filter((msg) => msg.role === "user");
-    const latestUserMessage = userMessages[userMessages.length - 1];
+    let latestUserMessage = userMessages[userMessages.length - 1];
 
     if (latestUserMessage) {
       await this.saveChatMessages(
@@ -103,7 +104,7 @@ export class VehelperService {
       );
     }
 
-    return result;
+    return { result, lastToolResult };
   }
 
   /**

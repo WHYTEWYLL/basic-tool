@@ -1,8 +1,8 @@
-import { CoreMessage } from 'ai';
-import { vehelperService } from '../../../lib/service/vehelper-service';
-import { NextRequest, NextResponse } from 'next/server';
+import { CoreMessage } from "ai";
+import { vehelperService } from "../../../lib/service/vehelper-service";
+import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
 /**
  * Main API handler for the chat functionality
@@ -15,35 +15,35 @@ export const POST = async (req: NextRequest) => {
     // Validate messages
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid or empty messages array' },
+        { error: "Invalid or empty messages array" },
         {
           status: 400,
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
           },
         }
       );
     }
 
-    if (!userId || typeof userId !== 'string') {
+    if (!userId || typeof userId !== "string") {
       return NextResponse.json(
-        { error: 'Invalid or missing userId' },
+        { error: "Invalid or missing userId" },
         {
           status: 400,
           headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type',
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
           },
         }
       );
     }
 
-    const validRoles = ['system', 'user', 'assistant', 'tool'];
+    const validRoles = ["system", "user", "assistant", "tool"];
     for (const msg of messages) {
       if (!msg.role || !validRoles.includes(msg.role)) {
         return NextResponse.json(
@@ -51,48 +51,52 @@ export const POST = async (req: NextRequest) => {
           {
             status: 400,
             headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type',
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "POST, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type",
             },
           }
         );
       }
-      if (typeof msg.content !== 'string') {
+      if (typeof msg.content !== "string") {
         return NextResponse.json(
-          { error: 'Message content must be a string' },
+          { error: "Message content must be a string" },
           {
             status: 400,
             headers: {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'POST, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type',
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "POST, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type",
             },
           }
         );
       }
     }
 
-    const result = await vehelperService.generateResponse(messages as CoreMessage[], userId, sessionId);
+    const { result, lastToolResult } = await vehelperService.generateResponse(
+      messages as CoreMessage[],
+      userId,
+      sessionId
+    );
 
     const streamResponse = result.toDataStreamResponse();
-    streamResponse.headers.set('Access-Control-Allow-Origin', '*');
-    streamResponse.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    streamResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type');
+    streamResponse.headers.set("Access-Control-Allow-Origin", "*");
+    streamResponse.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    streamResponse.headers.set("Access-Control-Allow-Headers", "Content-Type");
     return streamResponse;
   } catch (error) {
-    console.error('Error processing request:', error);
+    console.error("Error processing request:", error);
     return NextResponse.json(
-      { error: 'An error occurred processing your request' },
+      { error: "An error occurred processing your request" },
       {
         status: 500,
         headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
         },
       }
     );
@@ -103,9 +107,9 @@ export const OPTIONS = async () => {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
     },
   });
 };

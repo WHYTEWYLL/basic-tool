@@ -1,0 +1,14 @@
+-- AlterTable
+ALTER TABLE "BiteGramSubmission" ALTER COLUMN "title" DROP NOT NULL,
+ALTER COLUMN "nutriScore" DROP NOT NULL,
+ALTER COLUMN "nutritionValues" DROP NOT NULL,
+ALTER COLUMN "impactLightbulbs" DROP NOT NULL,
+ALTER COLUMN "impactShowers" DROP NOT NULL,
+ALTER COLUMN "impactGas" DROP NOT NULL,
+ALTER COLUMN "impactCo2" DROP NOT NULL;
+
+-- AlterTable
+ALTER TABLE "TrashDashSubmission" ALTER COLUMN "impactTurtles" DROP NOT NULL,
+ALTER COLUMN "impactTrashKg" DROP NOT NULL,
+ALTER COLUMN "impactTvHours" DROP NOT NULL,
+ALTER COLUMN "impactCo2" DROP NOT NULL;

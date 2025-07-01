@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Tool } from "ai";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient as PrismaClient } from ".prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -256,20 +256,11 @@ export const walletStats: Tool = {
       ),
   }),
   async execute({ userQuery, userId }) {
-    console.log("🔧 Tool Call: walletStats", {
-      userQuery,
-      userId,
-      timestamp: new Date().toISOString(),
-    });
-
     try {
       // Generate SQL based on the user's query
       const { sql, type } = generateSQLFromQuery(userQuery, userId);
 
-      console.log("🔍 Generated SQL:", { sql, type });
-
       if (type === "general") {
-        console.log("📊 Returning general ecosystem info");
         return {
           type: "ecosystem_info",
           data: ecosystemInfo,
@@ -279,11 +270,6 @@ export const walletStats: Tool = {
 
       // Execute the generated SQL query
       const result = await prisma.$queryRawUnsafe(sql);
-
-      console.log("✅ SQL query executed successfully:", {
-        resultType: typeof result,
-        resultLength: Array.isArray(result) ? result.length : "N/A",
-      });
 
       // Log the raw result with BigInt handling
       console.log(
@@ -319,7 +305,6 @@ export const walletStats: Tool = {
       console.error("❌ SQL query failed:", error);
 
       // Fallback to general ecosystem info
-      console.log("🔄 Falling back to general ecosystem info");
       return {
         type: "ecosystem_info",
         data: ecosystemInfo,

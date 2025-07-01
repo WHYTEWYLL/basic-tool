@@ -1,5 +1,5 @@
 'use client';
-import { useChat } from 'ai/react';
+import { useChat } from '@ai-sdk/react'
 import { useState, useEffect } from 'react';
 import PdfManager from './PdfManager';
 import { v4 as uuidv4 } from 'uuid';
@@ -37,6 +37,7 @@ export default function Chat() {
   useEffect(() => {
     if (userId) {
       fetchChatHistory();
+      
     }
   }, [userId]);
 
@@ -138,19 +139,45 @@ export default function Chat() {
             )}
           </div>
         ) : (
-          messages.map((m) => (
+          messages?.map((m) => (
             <div key={m.id} className="whitespace-pre-wrap">
               <div>
                 <div className="font-bold">{m.role}</div>
-                <p>
-                  {m.content.length > 0 ? (
-                    m.content
-                  ) : (
-                    <span className="italic font-light">
-                      {'calling tool: ' + m?.toolInvocations?.[0]?.toolName}
-                    </span>
-                  )}
-                </p>
+                {m.parts.map((part, idx) => {
+                  if (part.type === 'tool-invocation') {
+                    switch (part.toolInvocation.state) {
+                      case 'partial-call':
+                        return (
+                          <p key={part.toolInvocation.toolCallId + '-partial'}>
+                            [Tool running...] {/* You can show args or progress here if you want */}
+                          </p>
+                        );
+                      case 'call':
+                        return (
+                          <p key={part.toolInvocation.toolCallId + '-call'}>
+                            [Tool called: {part.toolInvocation.toolName}]
+                          </p>
+                        );
+                      case 'result':
+                        return (
+                          <div key={part.toolInvocation.toolCallId + '-result'}>
+                            <strong>Tool result:</strong>
+                            <pre>
+                              {typeof part.toolInvocation.result === 'string'
+                                ? part.toolInvocation.result
+                                : JSON.stringify(part.toolInvocation.result, null, 2)}
+                            </pre>
+                          </div>
+                        );
+                      default:
+                        return null;
+                    }
+                  }
+                  if (part.type === 'text') {
+                    return <span key={idx}>{part.text}</span>;
+                  }
+                  return null;
+                })}
               </div>
             </div>
           ))
