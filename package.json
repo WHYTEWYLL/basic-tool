@@ -19,8 +19,8 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "vector:generate": "prisma generate --schema=prisma/vector-schema.prisma",
-    "vector:migrate": "prisma migrate dev --schema=prisma/vector-schema.prisma",
+    "vector:generate": "prisma generate --schema=prisma/vector/vector-schema.prisma",
+    "vector:migrate": "prisma migrate dev --schema=prisma/vector/vector-schema.prisma",
     "vector:migrate:prod": "prisma migrate deploy --schema=prisma/vector-schema.prisma",
     "vector:studio": "prisma studio --schema=prisma/vector-schema.prisma"
   },

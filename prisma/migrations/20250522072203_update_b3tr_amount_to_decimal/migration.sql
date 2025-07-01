@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Submission" ALTER COLUMN "b3trAmount" SET DATA TYPE DECIMAL(65,30);

@@ -1,9 +1,10 @@
-import { PrismaClient as VectorPrismaClient } from '.prisma/vector-client';
-import { embed, embedMany, CoreMessage, streamText } from 'ai';
-import { openai } from '@ai-sdk/openai';
-import { z } from 'zod';
-import { vehelperPrompts } from '../prompts/veHelper';
-import PDFParser from 'pdf2json';
+import { PrismaClient as VectorPrismaClient } from ".prisma/vector-client";
+import { embed, embedMany, CoreMessage, generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+import { vehelperPrompts } from "../prompts/veHelper";
+import PDFParser from "pdf2json";
+import { walletStats } from "../tools/walletStats";
 
 export const insertResourceSchema = z.object({
   pdfBuffer: z.instanceof(Buffer),
@@ -30,7 +31,7 @@ interface PDFData {
 }
 
 export class VehelperService {
-  private embeddingModel = openai.embedding('text-embedding-ada-002');
+  private embeddingModel = openai.embedding("text-embedding-ada-002");
   private vectorDb: VectorPrismaClient;
   private readonly MAX_CHUNK_TOKENS = 500;
   private readonly MAX_EMBEDDING_TOKENS = 8192;
@@ -40,47 +41,79 @@ export class VehelperService {
   }
 
   /**
-   * Generates a streaming text response based on processed messages.
+   * Generates a response using the agent pattern with tools
    */
   async generateResponse(messages: CoreMessage[]) {
-    const { messages: processedMessages, temperature } = await this.processMessages(messages);
-    
-    const result = await streamText({
-      model: openai('gpt-3.5-turbo'),
+    const lastMessage = messages[messages.length - 1];
+    const lastMessageContent =
+      typeof lastMessage?.content === "string"
+        ? lastMessage.content.substring(0, 100) + "..."
+        : "Non-string content";
+
+    console.log("🤖 Generating response for messages:", {
+      messageCount: messages.length,
+      lastMessageContent,
+      timestamp: new Date().toISOString(),
+    });
+
+    const { messages: processedMessages, temperature } =
+      await this.processMessages(messages);
+
+    console.log("📝 Processed messages:", {
+      processedMessageCount: processedMessages.length,
+      temperature,
+      hasSystemPrompt: processedMessages.some((msg) => msg.role === "system"),
+    });
+
+    const result = await generateText({
+      model: openai("gpt-4o-mini"),
       messages: processedMessages,
       temperature,
+      tools: { walletStats },
+      maxSteps: 3, // Allow multiple steps for tool usage
+      maxTokens: 1000,
     });
-  
+
+    console.log("🚀 Agent result:", {
+      text: result.text,
+      steps: result.steps?.length || 0,
+      toolCalls: result.toolCalls?.length || 0,
+      finishReason: result.finishReason,
+    });
+
     return result;
   }
 
-   /**
+  /**
    * Processes messages and prepares them for streaming
    */
   async processMessages(messages: CoreMessage[]) {
     const lastMessage = messages[messages.length - 1];
-    if (typeof lastMessage.content !== 'string') {
-      throw new Error('Last message content must be a string');
+    if (typeof lastMessage.content !== "string") {
+      throw new Error("Last message content must be a string");
     }
-  
-    const relevantContentResults = await this.findRelevantContent(lastMessage.content) as SimilarContentResult[];
-    const relevantContent = relevantContentResults && relevantContentResults.length
-      ? relevantContentResults.map((result) => `${result.name}`).join('\n\n')
-      : "";
-  
+
+    const relevantContentResults = (await this.findRelevantContent(
+      lastMessage.content
+    )) as SimilarContentResult[];
+    const relevantContent =
+      relevantContentResults && relevantContentResults.length
+        ? relevantContentResults.map((result) => `${result.name}`).join("\n\n")
+        : "";
+
     const systemPrompt = relevantContent
       ? vehelperPrompts.withRelevantContent({ relevantContent })
       : vehelperPrompts.withoutRelevantContent;
-  
+
     const finalMessages: CoreMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...messages.filter((msg) => msg.role !== 'system')
+      { role: "system", content: systemPrompt },
+      ...messages.filter((msg) => msg.role !== "system"),
     ];
-  
+
     return {
       messages: finalMessages,
       isKnowledgeBaseAddition: false,
-      temperature: relevantContent ? 0.1 : 0.8
+      temperature: relevantContent ? 0.1 : 0.8,
     };
   }
 
@@ -89,25 +122,28 @@ export class VehelperService {
    */
   private generateChunks(input: string): string[] {
     const chunks: string[] = [];
-    let currentChunk = '';
+    let currentChunk = "";
     let currentTokenCount = 0;
-    const sentences = input.trim().split(/(?<=\.)\s+/).filter(s => s.trim() !== '');
+    const sentences = input
+      .trim()
+      .split(/(?<=\.)\s+/)
+      .filter((s) => s.trim() !== "");
 
     for (const sentence of sentences) {
       const sentenceLength = Math.ceil(sentence.length / 4);
       if (currentTokenCount + sentenceLength > this.MAX_CHUNK_TOKENS) {
-        if (currentChunk.trim() !== '') {
+        if (currentChunk.trim() !== "") {
           chunks.push(currentChunk.trim());
         }
         currentChunk = sentence;
         currentTokenCount = sentenceLength;
       } else {
-        currentChunk += (currentChunk ? ' ' : '') + sentence;
+        currentChunk += (currentChunk ? " " : "") + sentence;
         currentTokenCount += sentenceLength;
       }
     }
 
-    if (currentChunk.trim() !== '') {
+    if (currentChunk.trim() !== "") {
       chunks.push(currentChunk.trim());
     }
 
@@ -117,10 +153,12 @@ export class VehelperService {
   /**
    * Generates embeddings for multiple text chunks
    */
-  async generateEmbeddings(value: string): Promise<Array<{ embedding: number[]; content: string }>> {
+  async generateEmbeddings(
+    value: string
+  ): Promise<Array<{ embedding: number[]; content: string }>> {
     const chunks = this.generateChunks(value);
     if (chunks.length === 0) {
-      return []; 
+      return [];
     }
     const { embeddings } = await embedMany({
       model: this.embeddingModel,
@@ -133,9 +171,9 @@ export class VehelperService {
    * Generates a single embedding for a text value
    */
   async generateEmbedding(value: string): Promise<number[]> {
-    const input = value.replaceAll('\n', ' ');
+    const input = value.replaceAll("\n", " ");
     if (Math.ceil(input.length / 4) > this.MAX_EMBEDDING_TOKENS) {
-      throw new Error('Input exceeds maximum token limit for embedding');
+      throw new Error("Input exceeds maximum token limit for embedding");
     }
     const { embedding } = await embed({
       model: this.embeddingModel,
@@ -149,7 +187,7 @@ export class VehelperService {
    */
   async findRelevantContent(userQuery: string) {
     const userQueryEmbedded = await this.generateEmbedding(userQuery);
-    
+
     const similarGuides = await this.vectorDb.$queryRaw`
       SELECT 
         content as name,
@@ -159,7 +197,7 @@ export class VehelperService {
       ORDER BY similarity DESC
       LIMIT 4
     `;
-    
+
     return similarGuides;
   }
 
@@ -170,16 +208,21 @@ export class VehelperService {
     try {
       const payload = insertResourceSchema.parse(input);
       const parser = new PDFParser();
-      const pdfData = await new Promise((resolve, reject) => {
-        parser.on('pdfParser_dataReady', resolve);
-        parser.on('pdfParser_dataError', err => reject(new Error(`PDF parsing error: ${err.parserError.message}`)));
+      const pdfData = (await new Promise((resolve, reject) => {
+        parser.on("pdfParser_dataReady", resolve);
+        parser.on("pdfParser_dataError", (err) =>
+          reject(new Error(`PDF parsing error: ${err.parserError.message}`))
+        );
         parser.parseBuffer(payload.pdfBuffer);
-      }) as PDFData;
-      const contentWithoutLineBreaks = pdfData.Pages.map(page =>
-        page.Texts.map(text => decodeURIComponent(text.R[0].T)).join(' ')
-      ).join(' ').replace(/\n+/g, ' ').trim();
+      })) as PDFData;
+      const contentWithoutLineBreaks = pdfData.Pages.map((page) =>
+        page.Texts.map((text) => decodeURIComponent(text.R[0].T)).join(" ")
+      )
+        .join(" ")
+        .replace(/\n+/g, " ")
+        .trim();
       if (!contentWithoutLineBreaks) {
-        throw new Error('No text extracted from PDF');
+        throw new Error("No text extracted from PDF");
       }
       const resource = await this.vectorDb.resource.create({
         data: {
@@ -188,26 +231,36 @@ export class VehelperService {
         },
       });
 
-      const embeddings = await this.generateEmbeddings(contentWithoutLineBreaks);
+      const embeddings = await this.generateEmbeddings(
+        contentWithoutLineBreaks
+      );
       if (embeddings.length === 0) {
-        throw new Error('No valid chunks generated for embedding');
+        throw new Error("No valid chunks generated for embedding");
       }
 
       await this.vectorDb.$transaction(
-        embeddings.map(embedding =>
-          this.vectorDb.$executeRaw`
+        embeddings.map(
+          (embedding) =>
+            this.vectorDb.$executeRaw`
             INSERT INTO "Embedding" ("id", "resourceId", "content", "embedding")
-            VALUES (${crypto.randomUUID()}, ${resource.id}, ${embedding.content}, ${embedding.embedding})
+            VALUES (${crypto.randomUUID()}, ${resource.id}, ${
+              embedding.content
+            }, ${embedding.embedding})
           `
         )
       );
 
-      return { id: resource.id, message: "PDF content successfully processed and embedded." };
+      return {
+        id: resource.id,
+        message: "PDF content successfully processed and embedded.",
+      };
     } catch (e) {
       if (e instanceof Error) {
-        throw new Error(e.message.length > 0 ? e.message : 'Error processing PDF');
+        throw new Error(
+          e.message.length > 0 ? e.message : "Error processing PDF"
+        );
       }
-      throw new Error('Unknown error processing PDF');
+      throw new Error("Unknown error processing PDF");
     }
   }
 
@@ -216,14 +269,19 @@ export class VehelperService {
    */
   async createMultipleResources(inputs: NewResourceParams[]) {
     const results = await Promise.allSettled(
-      inputs.map(input => this.createResource(input))
+      inputs.map((input) => this.createResource(input))
     );
 
     return results.map((result, index) => ({
       input: inputs[index],
-      result: result.status === 'fulfilled' 
-        ? result.value 
-        : `Error: ${result.reason instanceof Error ? result.reason.message : 'Unknown error'}`
+      result:
+        result.status === "fulfilled"
+          ? result.value
+          : `Error: ${
+              result.reason instanceof Error
+                ? result.reason.message
+                : "Unknown error"
+            }`,
     }));
   }
 
@@ -235,7 +293,7 @@ export class VehelperService {
         createdAt: true,
       },
       orderBy: {
-        createdAt: 'desc',
+        createdAt: "desc",
       },
     });
   }
@@ -252,7 +310,11 @@ export class VehelperService {
       });
       return { message: `Resource with ID ${id} deleted successfully.` };
     } catch (e) {
-      throw new Error(`Failed to delete resource: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to delete resource: ${
+          e instanceof Error ? e.message : "Unknown error"
+        }`
+      );
     }
   }
 
